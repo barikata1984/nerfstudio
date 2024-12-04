@@ -184,7 +184,7 @@ class RaySamples(TensorDataclass):
         weights = alphas * transmittance[:, :-1, :]
         if weights_only:
             return weights
-        return weights, transmittance
+        return weights, transmittance[:, :-1, :]
 
 
 @dataclass

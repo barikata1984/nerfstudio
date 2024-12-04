@@ -60,6 +60,7 @@ from nerfstudio.models.semantic_nerfw import SemanticNerfWModelConfig
 from nerfstudio.models.splatfacto import SplatfactoModelConfig
 from nerfstudio.models.tensorf import TensoRFModelConfig
 from nerfstudio.models.vanilla_nerf import NeRFModel, VanillaModelConfig
+from nerfstudio.models.volsdf import VolSDFModelConfig
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.pipelines.dynamic_batch import DynamicBatchPipelineConfig
 from nerfstudio.plugins.registry import discover_methods
@@ -78,6 +79,7 @@ descriptions = {
     "dnerf": "Dynamic-NeRF model. (slow)",
     "phototourism": "Uses the Phototourism data.",
     "generfacto": "Generative Text to NeRF model",
+    "volsdf": "Implementation of VolSDF.",
     "neus": "Implementation of NeuS. (slow)",
     "neus-facto": "Implementation of NeuS-Facto. (slow)",
     "splatfacto": "Gaussian Splatting model",
@@ -507,6 +509,54 @@ method_configs["generfacto"] = TrainerConfig(
         },
     },
     viewer=ViewerConfig(),
+    vis="viewer",
+)
+
+method_configs["volsdf"] = TrainerConfig(
+    method_name="volsdf",
+    steps_per_eval_image=5000,
+    steps_per_eval_batch=5000,
+    steps_per_save=2000,
+    steps_per_eval_all_images=1000000,  # set to a very large model so we don't eval with all images
+    max_num_iterations=5001,  # 20001,
+    mixed_precision=False,
+    pipeline=VanillaPipelineConfig(
+        datamanager=VanillaDataManagerConfig(
+            _target=VanillaDataManager[SDFDataset],
+            dataparser=SDFStudioDataParserConfig(),
+            train_num_rays_per_batch=2048,
+            eval_num_rays_per_batch=2048,
+        ),
+        model=VolSDFModelConfig(
+            # proposal network allows for significantly smaller sdf/color network
+            sdf_field=SDFFieldConfig(
+                use_grid_feature=True,
+                num_layers=2,
+                num_layers_color=2,
+                hidden_dim=256,
+                bias=0.5,
+                beta_init=0.8,
+                use_appearance_embedding=False,
+            ),
+            background_model="none",
+            eval_num_rays_per_chunk=2048,
+        ),
+    ),
+    optimizers={
+        "proposal_networks": {
+            "optimizer": AdamOptimizerConfig(lr=1e-2, eps=1e-15),
+            "scheduler": MultiStepSchedulerConfig(max_steps=20001, milestones=(10000, 1500, 18000)),
+        },
+        "fields": {
+            "optimizer": AdamOptimizerConfig(lr=5e-4, eps=1e-15),
+            "scheduler": CosineDecaySchedulerConfig(warm_up_end=500, learning_rate_alpha=0.05, max_steps=20001),
+        },
+        "field_background": {
+            "optimizer": AdamOptimizerConfig(lr=5e-4, eps=1e-15),
+            "scheduler": CosineDecaySchedulerConfig(warm_up_end=500, learning_rate_alpha=0.05, max_steps=20001),
+        },
+    },
+    viewer=ViewerConfig(num_rays_per_chunk=1 << 15),
     vis="viewer",
 )
 
